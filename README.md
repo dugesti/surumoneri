@@ -43,6 +43,17 @@ Java 21 gerekir (1.20.6+ zaten bunu ister).
 > ViaVersion yalnızca proxy'de (Velocity/BungeeCord) kuruluysa backend oyuncunun gerçek
 > sürümünü göremez; bu durumda ViaVersion'ı backend sunucuya da kurun.
 
+## PlugMan / çalışırken yükleme
+
+`plugman load`, `unload` ve `reload` ile sorunsuz çalışır:
+
+- Kapanırken bekleyen tüm uyarı görevleri iptal edilir; eski sürümden kalan görev ya da çift mesaj olmaz.
+- ViaVersion, Floodgate veya Geyser sonradan yüklenir ya da kaldırılırsa bağlantılar otomatik yenilenir.
+  Kaldırılan eklentilerin sınıflarına referans tutulmaz, bu yüzden bellek sızıntısı olmaz.
+- Yükleme anında zaten oyunda olan oyunculara uyarı gitmez; uyarı bir sonraki girişlerinde gelir.
+
+> Folia'da PlugMan'ın kendisi resmi olarak desteklenmez; Folia'da sunucuyu yeniden başlatmak en güvenlisidir.
+
 ## Komutlar ve yetkiler
 
 | Komut | Açıklama |

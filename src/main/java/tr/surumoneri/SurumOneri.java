@@ -15,11 +15,20 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class SurumOneri extends JavaPlugin implements Listener, TabExecutor {
 
@@ -32,10 +41,15 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
                             String sound, float volume, float pitch, String message) {
     }
 
-    private ViaHook via;
-    private BedrockHook bedrock;
+    // PlugMan ile ViaVersion/Floodgate/Geyser sonradan yuklenip kaldirilabilir; baglantilar yenilenir.
+    private static final Set<String> HOOKED_PLUGINS = Set.of("ViaVersion", "floodgate", "Geyser-Spigot");
+
+    private volatile ViaHook via;
+    private volatile BedrockHook bedrock;
     private String serverVersion;
-    private int serverProtocol;
+    private volatile int serverProtocol;
+    // Bekleyen uyari gorevleri; cikista ve eklenti kapanirken (plugman unload/reload) iptal edilir.
+    private final Map<UUID, ScheduledTask> pending = new ConcurrentHashMap<>();
     // Folia'da birden fazla bolge thread'i okur; yenilemede tek seferde degistirilir.
     private volatile Settings settings;
 
@@ -43,9 +57,7 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
     public void onEnable() {
         saveDefaultConfig();
         serverVersion = detectServerVersion();
-        via = ViaHook.find(getLogger());
-        bedrock = new BedrockHook();
-        serverProtocol = detectServerProtocol();
+        refreshHooks();
         loadSettings();
 
         getServer().getPluginManager().registerEvents(this, this);
@@ -55,30 +67,84 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
             command.setTabCompleter(this);
         }
 
-        if (via == null) {
+        getLogger().info("Sunucu surumu: " + serverVersion + " (protokol " + serverProtocol + ")");
+    }
+
+    @Override
+    public void onDisable() {
+        pending.values().forEach(ScheduledTask::cancel);
+        pending.clear();
+        // Kaldirilan eklentilerin class loader'larina referans birakma.
+        via = null;
+        bedrock = null;
+    }
+
+    private void refreshHooks() {
+        ViaHook newVia = ViaHook.find(getLogger());
+        BedrockHook newBedrock = new BedrockHook();
+        via = newVia;
+        bedrock = newBedrock;
+        serverProtocol = detectServerProtocol(newVia);
+        if (newVia == null) {
             getLogger().warning("ViaVersion bulunamadi: farkli surumle giris yapilamayacagi icin uyari gonderilmeyecek.");
         }
-        getLogger().info("Sunucu surumu: " + serverVersion + " (protokol " + serverProtocol + ")"
-                + " | Floodgate: " + bedrock.hasFloodgate() + " | Geyser: " + bedrock.hasGeyser());
+        getLogger().info("Baglantilar: ViaVersion: " + (newVia != null) + " | Floodgate: " + newBedrock.hasFloodgate()
+                + " | Geyser: " + newBedrock.hasGeyser());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPluginEnable(PluginEnableEvent event) {
+        onHookedPluginChange(event.getPlugin());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPluginDisable(PluginDisableEvent event) {
+        onHookedPluginChange(event.getPlugin());
+    }
+
+    private void onHookedPluginChange(Plugin plugin) {
+        if (plugin != this && HOOKED_PLUGINS.contains(plugin.getName())) {
+            refreshHooks();
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
-        if (via == null || serverProtocol <= 0) {
+        BedrockHook bedrock = this.bedrock;
+        if (via == null || bedrock == null || serverProtocol <= 0) {
             return;
         }
         Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
         Settings s = settings;
-        if (player.hasPermission("surumoneri.bypass") || bedrock.isBedrock(player.getUniqueId(), s.uuidCheck())) {
+        if (player.hasPermission("surumoneri.bypass") || bedrock.isBedrock(uuid, s.uuidCheck())) {
             return;
         }
         // Oyuncunun kendi scheduler'i: Folia'da dogru bolge thread'inde calisir,
         // oyuncu cikarsa gorev kendiliginden iptal olur (sizinti/tekrar yok).
-        player.getScheduler().runDelayed(this, task -> warnIfNeeded(player), null, Math.max(1L, s.delayTicks()));
+        ScheduledTask task = player.getScheduler().runDelayed(this, t -> {
+            pending.remove(uuid, t);
+            warnIfNeeded(player);
+        }, null, Math.max(1L, s.delayTicks()));
+        if (task != null) {
+            ScheduledTask old = pending.put(uuid, task);
+            if (old != null) {
+                old.cancel();
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        ScheduledTask task = pending.remove(event.getPlayer().getUniqueId());
+        if (task != null) {
+            task.cancel();
+        }
     }
 
     private void warnIfNeeded(Player player) {
-        if (!player.isOnline()) {
+        ViaHook via = this.via;
+        if (!isEnabled() || via == null || !player.isOnline()) {
             return;
         }
         Settings s = settings;
@@ -115,6 +181,7 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
     }
 
     private String clientVersionName(int protocol) {
+        ViaHook via = this.via;
         String name = via == null ? null : via.versionName(protocol);
         return name == null ? "protokol " + protocol : name;
     }
@@ -148,7 +215,7 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
     }
 
     @SuppressWarnings("deprecation")
-    private int detectServerProtocol() {
+    private static int detectServerProtocol(ViaHook via) {
         try {
             int protocol = Bukkit.getUnsafe().getProtocolVersion();
             if (protocol > 0) {
@@ -183,6 +250,7 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
                     reply(sender, "<red>Bu komut oyun içinden kullanılır.</red>");
                     return true;
                 }
+                ViaHook via = this.via;
                 int protocol = via == null ? -1 : via.playerProtocol(player.getUniqueId());
                 sendWarning(player, settings, protocol > 0 ? protocol : serverProtocol);
             }
@@ -196,7 +264,9 @@ public final class SurumOneri extends JavaPlugin implements Listener, TabExecuto
                     reply(sender, "<red>Oyuncu çevrimiçi değil.</red>");
                     return true;
                 }
-                boolean isBedrock = bedrock.isBedrock(target.getUniqueId(), settings.uuidCheck());
+                ViaHook via = this.via;
+                BedrockHook bedrock = this.bedrock;
+                boolean isBedrock = bedrock != null && bedrock.isBedrock(target.getUniqueId(), settings.uuidCheck());
                 int protocol = via == null ? -1 : via.playerProtocol(target.getUniqueId());
                 boolean warn = !isBedrock && !target.hasPermission("surumoneri.bypass") && shouldWarn(settings, protocol);
                 reply(sender, "<white>" + MM.escapeTags(target.getName()) + "</white> <dark_gray>»</dark_gray> "

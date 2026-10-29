@@ -59,7 +59,7 @@ final class BedrockHook {
 
     private static Method[] lookup(String pluginName, String className, String instanceMethod, String checkMethod) {
         Plugin plugin = Bukkit.getPluginManager().getPlugin(pluginName);
-        if (plugin == null) {
+        if (plugin == null || !plugin.isEnabled()) {
             return new Method[2];
         }
         try {
