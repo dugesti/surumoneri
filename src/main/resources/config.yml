@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────
+#  SurumOneri
+#  Sunucu surumunden farkli bir istemciyle giren
+#  Java oyuncularina kisa bir oneri mesaji gosterir.
+#  Bedrock (Geyser/Floodgate) oyunculari atlanir.
+# ─────────────────────────────────────────────
+
+# Onerilen surum. "auto" = sunucunun kendi surumu API'den okunur (orn. 1.21.11).
+# Elle yazarsan (orn. "1.21.11") mesajda o gosterilir; karsilastirma yine
+# sunucunun protokol numarasiyla yapilir.
+onerilen-surum: auto
+
+# Kime uyari gidecek?
+#   hepsi -> sunucu surumunden farkli herkes
+#   eski  -> sadece daha eski surumle girenler
+#   yeni  -> sadece daha yeni surumle girenler
+uyari-modu: hepsi
+
+# Giristen kac tick sonra mesaj atilsin (20 tick = 1 saniye).
+# Giris mesajlari/MOTD arasinda kaybolmamasi icin biraz gecikme iyidir.
+gecikme-tick: 60
+
+# Bedrock tespiti: Floodgate/Geyser API'si + Floodgate UUID formati
+# (00000000-0000-0000-xxxx-xxxxxxxxxxxx). Isim on ekine BAKILMAZ.
+bedrock-uuid-kontrolu: true
+
+# Mesajla birlikte calinacak ses (bos birakirsan ses calmaz).
+ses: "minecraft:block.note_block.pling"
+ses-seviyesi: 0.6
+ses-perdesi: 1.6
+
+# MiniMessage formati: https://docs.advntr.dev/minimessage/format.html
+# Yer tutucular: <sunucu_surumu> <istemci_surumu> <oyuncu>
+mesaj:
+  - ""
+  - " <dark_gray>▍</dark_gray> <gradient:#7F7FD5:#91EAE4><bold>SÜRÜM ÖNERİSİ</bold></gradient>"
+  - " <dark_gray>▍</dark_gray> <gray>En sorunsuz deneyim için <white><bold><sunucu_surumu></bold></white> kullanın.</gray> <dark_gray>(Sizinki: <istemci_surumu>)</dark_gray>"
+  - ""

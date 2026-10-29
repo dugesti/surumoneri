@@ -1,0 +1,21 @@
+name: SurumOneri
+version: '${project.version}'
+main: tr.surumoneri.SurumOneri
+api-version: '1.20'
+folia-supported: true
+description: Sunucu surumu disinda baglanan Java oyuncularina kisa bir surum onerisi gosterir.
+softdepend: [ViaVersion, ViaBackwards, ViaRewind, floodgate, Geyser-Spigot]
+
+commands:
+  surumoneri:
+    description: SurumOneri yonetim komutu
+    usage: /surumoneri <yenile|test|kontrol <oyuncu>>
+    permission: surumoneri.admin
+
+permissions:
+  surumoneri.admin:
+    description: /surumoneri komutunu kullanabilir
+    default: op
+  surumoneri.bypass:
+    description: Surum uyarisini hic gormez
+    default: false
