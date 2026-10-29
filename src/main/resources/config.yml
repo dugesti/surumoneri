@@ -33,6 +33,6 @@ ses-perdesi: 1.6
 # Yer tutucular: <sunucu_surumu> <istemci_surumu> <oyuncu>
 mesaj:
   - ""
-  - " <dark_gray>▍</dark_gray> <gradient:#7F7FD5:#91EAE4><bold>SÜRÜM ÖNERİSİ</bold></gradient>"
+  - " <dark_gray>▍</dark_gray> <gradient:#FF6A00:#FFB347><bold>SÜRÜM ÖNERİSİ</bold></gradient>"
   - " <dark_gray>▍</dark_gray> <gray>En sorunsuz deneyim için <white><bold><sunucu_surumu></bold></white> kullanın.</gray> <dark_gray>(Sizinki: <istemci_surumu>)</dark_gray>"
   - ""

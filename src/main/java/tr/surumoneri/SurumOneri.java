@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SurumOneri extends JavaPlugin implements Listener, TabExecutor {
 
     private static final MiniMessage MM = MiniMessage.miniMessage();
-    private static final String PREFIX = "<dark_gray>[<gradient:#7F7FD5:#91EAE4>SürümÖneri</gradient>]</dark_gray> ";
+    private static final String PREFIX = "<dark_gray>[<gradient:#FF6A00:#FFB347>SürümÖneri</gradient>]</dark_gray> ";
 
     private enum Mode { HEPSI, ESKI, YENI }
 
