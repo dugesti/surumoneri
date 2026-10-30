@@ -4,6 +4,7 @@
 #  │                                                          │
 #  │  /cekilis <isim>   → 10 sn geri sayım, rastgele kazanan  │
 #  │  /cekilis iptal    → devam eden çekilişi iptal eder      │
+#  │  /cekilis admin    → aç: sadece OP görür, kapat: herkes  │
 #  │  Sadece OP kullanabilir.                                 │
 #  ╰──────────────────────────────────────────────────────────╯
 #
@@ -51,6 +52,8 @@ import:
     net.kyori.adventure.sound.Sound$Source as AdvSource
     net.kyori.adventure.sound.Sound$Emitter as AdvEmitter
     net.kyori.adventure.key.Key as AdvKey
+    net.kyori.adventure.audience.Audience as AdvAudience
+    java.util.ArrayList
 
 # ───────────────────────── Yaşam döngüsü ─────────────────────────
 
@@ -84,21 +87,36 @@ function cekilisCizgi() :: text:
 function cekilisBilgi(alici: object, metin: text):
     {_alici}.sendMessage(cekilisMM("{tema}{bold}ÇEKİLİŞ{/bold}{/tema} {dark_gray}» {gray}%{_metin}%"))
 
-# Herkese (oyuncular + konsol) mesaj
+# Çekilişi kimin göreceği: admin modu açıksa sadece OP'ler + konsol, kapalıysa herkes
+function cekilisHedef() :: object:
+    if {cekilis::admin-modu} is not set:
+        return Bukkit.getServer()
+    set {_liste} to new ArrayList()
+    {_liste}.add(Bukkit.getConsoleSender())
+    loop all players:
+        set {_op} to loop-player.isOp()
+        if {_op} is true:
+            {_liste}.add(loop-player)
+    return AdvAudience.audience({_liste})
+
 function cekilisDuyur(metin: text):
-    Bukkit.getServer().sendMessage(cekilisMM({_metin}))
+    set {_h} to cekilisHedef()
+    {_h}.sendMessage(cekilisMM({_metin}))
 
 function cekilisBaslik(ust: text, alt: text, giris: number, kalis: number, cikis: number):
     set {_z} to AdvTimes.times(JDuration.ofMillis({_giris}), JDuration.ofMillis({_kalis}), JDuration.ofMillis({_cikis}))
-    Bukkit.getServer().showTitle(AdvTitle.title(cekilisMM({_ust}), cekilisMM({_alt}), {_z}))
+    set {_h} to cekilisHedef()
+    {_h}.showTitle(AdvTitle.title(cekilisMM({_ust}), cekilisMM({_alt}), {_z}))
 
 function cekilisActionBar(metin: text):
-    Bukkit.getServer().sendActionBar(cekilisMM({_metin}))
+    set {_h} to cekilisHedef()
+    {_h}.sendActionBar(cekilisMM({_metin}))
 
 # Ses her oyuncuya kendi üzerinde çalınır (konum okunmaz, Folia için güvenli)
 function cekilisSes(ses: text, perde: number = 1, seviye: number = 1):
     set {_s} to AdvSound.sound(AdvKey.key({_ses}), AdvSource.MASTER, {_seviye}, {_perde})
-    Bukkit.getServer().playSound({_s}, AdvEmitter.self())
+    set {_h} to cekilisHedef()
+    {_h}.playSound({_s}, AdvEmitter.self())
 
 # Çekilişe katılabilecek çevrim içi oyuncular
 function cekilisAdaylar() :: players:
@@ -177,7 +195,8 @@ function cekilisBitir(id: number):
     delete {-cekilis::%{_id}%::*}
 
     if size of {_adaylar::*} is 0:
-        Bukkit.getServer().clearTitle()
+        set {_h} to cekilisHedef()
+        {_h}.clearTitle()
         cekilisDuyur("{$FF4D4D}✖ {gray}Çekiliş {white}%{_isim}% {gray}için çevrim içi oyuncu kalmadı, iptal edildi.")
         cekilisSes("minecraft:block.note_block.bass", 0.6)
         stop
@@ -192,7 +211,12 @@ function cekilisBitir(id: number):
     cekilisActionBar("{gray}Kazanan: {tema}{bold}%{_ad}%{/bold}{/tema}")
     cekilisSes("minecraft:ui.toast.challenge_complete", 1, 0.8)
     cekilisSes("minecraft:entity.firework_rocket.twinkle", 1.1, 0.6)
-    cekilisBilgi({_kazanan}, "{$FFD200}✦ {white}Tebrikler! %{_isim}% {gray}çekilişini kazandın.")
+    # Admin modunda OP olmayan kazanana özel mesaj gitmez (çekilişi görmüyor)
+    set {_kop} to true
+    if {cekilis::admin-modu} is set:
+        set {_kop} to {_kazanan}.isOp()
+    if {_kop} is true:
+        cekilisBilgi({_kazanan}, "{$FFD200}✦ {white}Tebrikler! %{_isim}% {gray}çekilişini kazandın.")
 
     # ÖDÜL: burası sana ait. {_kazanan} = oyuncu, {_ad} = oyuncu ismi.
     # Folia notu: bu kod global bölge thread'inde çalışır. Oyuncunun envanterine
@@ -212,7 +236,21 @@ command /cekilis [<text>]:
             stop
 
         if arg-1 is not set:
-            cekilisBilgi({_g}, "Kullanım: {$FFD200}/cekilis [isim] {dark_gray}┃ {$FFD200}/cekilis iptal")
+            set {_mod} to "{$FF4D4D}KAPALI {dark_gray}(herkes görür)"
+            if {cekilis::admin-modu} is set:
+                set {_mod} to "{$7CFF6B}AÇIK {dark_gray}(sadece OP'ler görür)"
+            cekilisBilgi({_g}, "Kullanım: {$FFD200}/cekilis [isim] {dark_gray}┃ {$FFD200}/cekilis iptal {dark_gray}┃ {$FFD200}/cekilis admin")
+            cekilisBilgi({_g}, "Admin modu: %{_mod}%")
+            stop
+
+        # ── Admin modu ──
+        if arg-1 is "admin":
+            if {cekilis::admin-modu} is set:
+                delete {cekilis::admin-modu}
+                cekilisBilgi({_g}, "Admin modu {$FF4D4D}KAPATILDI{gray}. Çekilişleri artık {white}herkes {gray}görecek.")
+            else:
+                set {cekilis::admin-modu} to true
+                cekilisBilgi({_g}, "Admin modu {$7CFF6B}AÇILDI{gray}. Çekilişleri artık {white}sadece OP'ler {gray}görecek.")
             stop
 
         # ── İptal ──
@@ -225,7 +263,8 @@ command /cekilis [<text>]:
             if {-cekilis::%{_id}%::gorev} is set:
                 {-cekilis::%{_id}%::gorev}.cancel()
             delete {-cekilis::%{_id}%::*}
-            Bukkit.getServer().clearTitle()
+            set {_h} to cekilisHedef()
+            {_h}.clearTitle()
             cekilisDuyur("{$FF4D4D}✖ {gray}Çekiliş {white}%{_isim}% {gray}iptal edildi.")
             cekilisSes("minecraft:block.note_block.bass", 0.6)
             stop
@@ -266,6 +305,9 @@ command /cekilis [<text>]:
             stop
         set {-cekilis::%{_id}%::gorev} to {_gorev}
 
+        set {_gor} to ""
+        if {cekilis::admin-modu} is set:
+            set {_gor} to "{newline}  {dark_gray}▸ {gray}Görünürlük: {$FF4D4D}Sadece OP"
         set {_c} to cekilisCizgi()
-        cekilisDuyur("%{_c}%{newline} {newline}  {tema}{bold}✦ ÇEKİLİŞ BAŞLADI ✦{/bold}{/tema}{newline} {newline}  {dark_gray}▸ {gray}Çekiliş: {white}%{_isim}%{newline}  {dark_gray}▸ {gray}Katılımcı: {white}%{_n}% oyuncu{newline}  {dark_gray}▸ {gray}Süre: {white}{@sure} saniye{newline} {newline}%{_c}%")
+        cekilisDuyur("%{_c}%{newline} {newline}  {tema}{bold}✦ ÇEKİLİŞ BAŞLADI ✦{/bold}{/tema}{newline} {newline}  {dark_gray}▸ {gray}Çekiliş: {white}%{_isim}%{newline}  {dark_gray}▸ {gray}Katılımcı: {white}%{_n}% oyuncu{newline}  {dark_gray}▸ {gray}Süre: {white}{@sure} saniye%{_gor}%{newline} {newline}%{_c}%")
         cekilisSes("minecraft:block.note_block.bell", 1.2, 0.8)

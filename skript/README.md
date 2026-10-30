@@ -5,6 +5,7 @@
 ```
 /cekilis <isim>   → geri sayım başlar, sonunda rastgele bir oyuncu "Kazanan:" olarak duyurulur
 /cekilis iptal    → devam eden çekilişi iptal eder
+/cekilis admin    → admin modu aç/kapat (açık: çekilişi sadece OP'ler görür, kapalı: herkes)
 ```
 
 ## Gereksinimler
@@ -16,6 +17,9 @@
 ## Kurulum
 
 `cekilis.sk` dosyasını `plugins/Skript/scripts/` içine at, `/sk reload cekilis`.
+
+Admin modu sunucu yeniden başlasa da korunur. Açıkken kazanan yine tüm
+oyuncular arasından seçilir; OP olmayan kazanana özel mesaj gitmez.
 
 ## Ayarlar (`options:`)
 
