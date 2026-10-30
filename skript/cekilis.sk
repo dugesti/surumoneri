@@ -40,8 +40,6 @@ options:
 
 import:
     org.bukkit.Bukkit
-    java.lang.Character
-    java.lang.String as JString
     java.util.function.Consumer
     java.util.concurrent.atomic.AtomicLong
     java.time.Duration as JDuration
@@ -59,10 +57,7 @@ import:
 
 on load:
     delete {-cekilis::*}
-    set {-cekilis::uretec} to new AtomicLong(0)
-    set {-cekilis::aktif} to new AtomicLong(0)
-    # Eski Skript sürümleri string içindeki diyezi yorum sanar, o yüzden koddan üretilir
-    set {-cekilis::diyez} to new JString(Character.toChars(35))
+    cekilisHazirla()
 
 on unload:
     if {-cekilis::aktif} is set:
@@ -73,9 +68,26 @@ on unload:
 
 # ───────────────────────── Yardımcılar ─────────────────────────
 
+# Değişkenler eksikse oluşturur (on load + her komutta güvenlik için)
+function cekilisHazirla():
+    if {-cekilis::uretec} is not set:
+        set {-cekilis::uretec} to new AtomicLong(0)
+    if {-cekilis::aktif} is not set:
+        set {-cekilis::aktif} to new AtomicLong(0)
+    if {-cekilis::diyez} is not set:
+        set {-cekilis::diyez} to cekilisDiyez()
+
+# Diyez karakteri. Skript sürümüne göre string içindeki çift diyez ya tek
+# karaktere iner ya da iki karakter kalır; ilk karakter her durumda diyezdir.
+function cekilisDiyez() :: text:
+    set {_d} to "##"
+    return first character of {_d}
+
 # {etiket} yazımını MiniMessage bileşenine çevirir
 function cekilisMM(metin: text) :: object:
     set {_d} to {-cekilis::diyez}
+    if {_d} is not set:
+        set {_d} to cekilisDiyez()
     set {_m} to {_metin}.replace("{tema}", "{gradient:%{_d}%{@renk1}:%{_d}%{@renk2}}").replace("{/tema}", "{/gradient}")
     set {_m} to {_m}.replace("{$", "{%{_d}%").replace("{", "<").replace("}", ">")
     return MiniMsg.miniMessage().deserialize({_m})
@@ -229,6 +241,7 @@ command /cekilis [<text>]:
     permission: cekilis.yonet
     permission message: &cBu komutu sadece yetkililer kullanabilir.
     trigger:
+        cekilisHazirla()
         set {_g} to sender
         set {_op} to {_g}.isOp()
         if {_op} is not true:
