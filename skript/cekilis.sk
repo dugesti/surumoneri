@@ -1,0 +1,271 @@
+#  ╭──────────────────────────────────────────────────────────╮
+#  │  ÇEKİLİŞ  •  Paper / Folia 1.21.x                        │
+#  │  Gereksinim: Skript + skript-reflect                     │
+#  │                                                          │
+#  │  /cekilis <isim>   → 10 sn geri sayım, rastgele kazanan  │
+#  │  /cekilis iptal    → devam eden çekilişi iptal eder      │
+#  │  Sadece OP kullanabilir.                                 │
+#  ╰──────────────────────────────────────────────────────────╯
+#
+#  Neden Folia uyumlu?
+#   - Skript'in "wait" / "every X seconds" yapıları Bukkit scheduler kullanır,
+#     Folia'da çalışmaz. Geri sayım reflect ile GlobalRegionScheduler üzerinden
+#     yapılır (Paper'da da aynı API vardır, ana thread'de çalışır).
+#   - Mesaj, title, actionbar ve ses Adventure "Server" audience'ı ile tüm
+#     oyunculara paket olarak gider; dünyaya/entity'ye dokunulmaz.
+#
+#  Neden bug / dupe olmaz?
+#   - Aynı anda tek çekiliş: AtomicLong + compareAndSet. İki yetkili aynı anda
+#     komut yazsa bile sadece biri başlatır.
+#   - Kazanan sadece bir kez seçilir: bitiş ve iptal aynı kilidi atomik olarak
+#     bırakır, hangisi önce davranırsa o geçerlidir.
+#   - Her çekilişin kendi oturum numarası var; iptal edilen / eski görevler bir
+#     sonraki tikte kendini durdurur. Script reload edilince görev kapatılır.
+#   - Kazanan, geri sayım bittiği anda çevrim içi olan oyuncular arasından seçilir.
+#
+#  Renk etiketleri MiniMessage'dır, ancak <...> yerine {...} yazılır.
+#  Hex renk: {$FFD200}   Tema gradyanı: {tema}yazı{/tema}
+
+options:
+    # Geri sayım süresi (saniye)
+    sure: 10
+    # true yapılırsa OP'ler çekilişe dahil edilmez
+    oplar-haric: false
+    # Çekiliş isminin en fazla uzunluğu
+    max-isim: 40
+    # Tema gradyanı (başında diyez olmadan)
+    renk1: FF7A00
+    renk2: FFD200
+
+import:
+    org.bukkit.Bukkit
+    java.lang.Character
+    java.lang.String as JString
+    java.util.function.Consumer
+    java.util.concurrent.atomic.AtomicLong
+    java.time.Duration as JDuration
+    net.kyori.adventure.text.minimessage.MiniMessage as MiniMsg
+    net.kyori.adventure.title.Title as AdvTitle
+    net.kyori.adventure.title.Title$Times as AdvTimes
+    net.kyori.adventure.sound.Sound as AdvSound
+    net.kyori.adventure.sound.Sound$Source as AdvSource
+    net.kyori.adventure.sound.Sound$Emitter as AdvEmitter
+    net.kyori.adventure.key.Key as AdvKey
+
+# ───────────────────────── Yaşam döngüsü ─────────────────────────
+
+on load:
+    delete {-cekilis::*}
+    set {-cekilis::uretec} to new AtomicLong(0)
+    set {-cekilis::aktif} to new AtomicLong(0)
+    # Eski Skript sürümleri string içindeki diyezi yorum sanar, o yüzden koddan üretilir
+    set {-cekilis::diyez} to new JString(Character.toChars(35))
+
+on unload:
+    if {-cekilis::aktif} is set:
+        set {_id} to {-cekilis::aktif}.getAndSet(0)
+        if {-cekilis::%{_id}%::gorev} is set:
+            {-cekilis::%{_id}%::gorev}.cancel()
+    delete {-cekilis::*}
+
+# ───────────────────────── Yardımcılar ─────────────────────────
+
+# {etiket} yazımını MiniMessage bileşenine çevirir
+function cekilisMM(metin: text) :: object:
+    set {_d} to {-cekilis::diyez}
+    set {_m} to {_metin}.replace("{tema}", "{gradient:%{_d}%{@renk1}:%{_d}%{@renk2}}").replace("{/tema}", "{/gradient}")
+    set {_m} to {_m}.replace("{$", "{%{_d}%").replace("{", "<").replace("}", ">")
+    return MiniMsg.miniMessage().deserialize({_m})
+
+function cekilisCizgi() :: text:
+    return "{tema}{st}                                                    {/st}{/tema}"
+
+# Tek bir kişiye (oyuncu veya konsol) önekli mesaj
+function cekilisBilgi(alici: object, metin: text):
+    {_alici}.sendMessage(cekilisMM("{tema}{bold}ÇEKİLİŞ{/bold}{/tema} {dark_gray}» {gray}%{_metin}%"))
+
+# Herkese (oyuncular + konsol) mesaj
+function cekilisDuyur(metin: text):
+    Bukkit.getServer().sendMessage(cekilisMM({_metin}))
+
+function cekilisBaslik(ust: text, alt: text, giris: number, kalis: number, cikis: number):
+    set {_z} to AdvTimes.times(JDuration.ofMillis({_giris}), JDuration.ofMillis({_kalis}), JDuration.ofMillis({_cikis}))
+    Bukkit.getServer().showTitle(AdvTitle.title(cekilisMM({_ust}), cekilisMM({_alt}), {_z}))
+
+function cekilisActionBar(metin: text):
+    Bukkit.getServer().sendActionBar(cekilisMM({_metin}))
+
+# Ses her oyuncuya kendi üzerinde çalınır (konum okunmaz, Folia için güvenli)
+function cekilisSes(ses: text, perde: number = 1, seviye: number = 1):
+    set {_s} to AdvSound.sound(AdvKey.key({_ses}), AdvSource.MASTER, {_seviye}, {_perde})
+    Bukkit.getServer().playSound({_s}, AdvEmitter.self())
+
+# Çekilişe katılabilecek çevrim içi oyuncular
+function cekilisAdaylar() :: players:
+    loop all players:
+        set {_dahil} to true
+        if {@oplar-haric} is true:
+            set {_op} to loop-player.isOp()
+            if {_op} is true:
+                set {_dahil} to false
+        if {_dahil} is true:
+            add loop-player to {_liste::*}
+    return {_liste::*}
+
+# ───────────────────────── Akış ─────────────────────────
+
+# GlobalRegionScheduler her saniye bunu çağırır.
+# Parametre sırası skript-reflect'e göre: (bağlı argüman, proxy, ScheduledTask)
+function cekilisTick(id: number, vekil: object, gorev: object):
+    set {_aktif} to {-cekilis::aktif}.get()
+    if {_aktif} is not set:
+        {_gorev}.cancel()
+        stop
+    if {_aktif} is not {_id}:
+        {_gorev}.cancel()
+        stop
+    set {_s} to {-cekilis::%{_id}%::sayac}
+    if {_s} is set:
+        if {_s} > 0:
+            cekilisGeriSayim({_id}, {_s})
+            set {-cekilis::%{_id}%::sayac} to {_s} - 1
+            stop
+    {_gorev}.cancel()
+    cekilisBitir({_id})
+
+function cekilisGeriSayim(id: number, s: number):
+    set {_isim} to {-cekilis::%{_id}%::isim}
+
+    if {_s} > 5:
+        set {_renk} to "{$FFD200}"
+    else if {_s} > 3:
+        set {_renk} to "{$FF9A00}"
+    else:
+        set {_renk} to "{$FF4D4D}"
+
+    # Slot makinesi efekti: her saniye rastgele bir isim döner
+    set {_ad} to "..."
+    set {_p} to random element of cekilisAdaylar()
+    if {_p} is set:
+        set {_ad} to {_p}.getName()
+
+    cekilisBaslik("%{_renk}%{bold}%{_s}%", "{dark_gray}» {white}%{_ad}% {dark_gray}«", 0, 1100, 200)
+
+    # İlerleme çubuğu (10 parça)
+    set {_dolu} to floor(10 * ({@sure} - {_s}) / {@sure})
+    set {_bar} to ""
+    set {_bos} to ""
+    loop {_dolu} times:
+        set {_bar} to "%{_bar}%▰"
+    loop (10 - {_dolu}) times:
+        set {_bos} to "%{_bos}%▱"
+    cekilisActionBar("{gray}%{_isim}% {dark_gray}┃ {tema}%{_bar}%{/tema}{$3A3A3A}%{_bos}% {dark_gray}┃ %{_renk}%%{_s}%s")
+
+    if {_s} <= 3:
+        cekilisSes("minecraft:block.note_block.pling", 0.9 + (3 - {_s}) * 0.25)
+    else:
+        cekilisSes("minecraft:block.note_block.hat", 1.2, 0.7)
+
+function cekilisBitir(id: number):
+    set {_isim} to {-cekilis::%{_id}%::isim}
+    set {_adaylar::*} to cekilisAdaylar()
+
+    # Kilidi sadece bu oturum hâlâ aktifse bırak; iptal ile yarışırsa tek biri kazanır
+    set {_ok} to {-cekilis::aktif}.compareAndSet({_id}, 0)
+    if {_ok} is not true:
+        stop
+    delete {-cekilis::%{_id}%::*}
+
+    if size of {_adaylar::*} is 0:
+        Bukkit.getServer().clearTitle()
+        cekilisDuyur("{$FF4D4D}✖ {gray}Çekiliş {white}%{_isim}% {gray}için çevrim içi oyuncu kalmadı, iptal edildi.")
+        cekilisSes("minecraft:block.note_block.bass", 0.6)
+        stop
+
+    set {_kazanan} to random element of {_adaylar::*}
+    set {_ad} to {_kazanan}.getName()
+    set {_n} to size of {_adaylar::*}
+
+    set {_c} to cekilisCizgi()
+    cekilisDuyur("%{_c}%{newline} {newline}  {tema}{bold}★ ÇEKİLİŞ SONUÇLANDI ★{/bold}{/tema}{newline} {newline}  {dark_gray}▸ {gray}Çekiliş: {white}%{_isim}%{newline}  {dark_gray}▸ {gray}Kazanan: {tema}{bold}%{_ad}%{/bold}{/tema}{newline}  {dark_gray}▸ {gray}Katılımcı: {white}%{_n}% oyuncu{newline} {newline}%{_c}%")
+    cekilisBaslik("{tema}{bold}★ KAZANAN ★{/bold}{/tema}", "{white}{bold}%{_ad}%", 200, 3500, 700)
+    cekilisActionBar("{gray}Kazanan: {tema}{bold}%{_ad}%{/bold}{/tema}")
+    cekilisSes("minecraft:ui.toast.challenge_complete", 1, 0.8)
+    cekilisSes("minecraft:entity.firework_rocket.twinkle", 1.1, 0.6)
+    cekilisBilgi({_kazanan}, "{$FFD200}✦ {white}Tebrikler! %{_isim}% {gray}çekilişini kazandın.")
+
+    # ÖDÜL: burası sana ait. {_kazanan} = oyuncu, {_ad} = oyuncu ismi.
+    # Folia notu: bu kod global bölge thread'inde çalışır. Oyuncunun envanterine
+    # doğrudan dokunmak yerine konsol komutu kullan, örn:
+    #   execute console command "give %{_ad}% diamond 1"
+
+# ───────────────────────── Komut ─────────────────────────
+
+command /cekilis [<text>]:
+    permission: cekilis.yonet
+    permission message: &cBu komutu sadece yetkililer kullanabilir.
+    trigger:
+        set {_g} to sender
+        set {_op} to {_g}.isOp()
+        if {_op} is not true:
+            cekilisBilgi({_g}, "{$FF4D4D}Bu komutu sadece OP'ler kullanabilir.")
+            stop
+
+        if arg-1 is not set:
+            cekilisBilgi({_g}, "Kullanım: {$FFD200}/cekilis [isim] {dark_gray}┃ {$FFD200}/cekilis iptal")
+            stop
+
+        # ── İptal ──
+        if arg-1 is "iptal":
+            set {_id} to {-cekilis::aktif}.getAndSet(0)
+            if {_id} <= 0:
+                cekilisBilgi({_g}, "{$FF4D4D}Devam eden bir çekiliş yok.")
+                stop
+            set {_isim} to {-cekilis::%{_id}%::isim}
+            if {-cekilis::%{_id}%::gorev} is set:
+                {-cekilis::%{_id}%::gorev}.cancel()
+            delete {-cekilis::%{_id}%::*}
+            Bukkit.getServer().clearTitle()
+            cekilisDuyur("{$FF4D4D}✖ {gray}Çekiliş {white}%{_isim}% {gray}iptal edildi.")
+            cekilisSes("minecraft:block.note_block.bass", 0.6)
+            stop
+
+        # ── Başlat ──
+        set {_ham} to arg-1
+        set {_ham} to {_ham}.replace("§", "").replace("{", "(").replace("}", ")").trim()
+        if length of {_ham} is 0:
+            cekilisBilgi({_g}, "{$FF4D4D}Geçerli bir çekiliş ismi yaz.")
+            stop
+        if length of {_ham} > {@max-isim}:
+            cekilisBilgi({_g}, "{$FF4D4D}Çekiliş ismi en fazla {@max-isim} karakter olabilir.")
+            stop
+        set {_isim} to MiniMsg.miniMessage().escapeTags({_ham})
+
+        set {_n} to size of cekilisAdaylar()
+        if {_n} is 0:
+            cekilisBilgi({_g}, "{$FF4D4D}Çekilişe katılabilecek çevrim içi oyuncu yok.")
+            stop
+
+        set {_id} to {-cekilis::uretec}.incrementAndGet()
+        set {_ok} to {-cekilis::aktif}.compareAndSet(0, {_id})
+        if {_ok} is not true:
+            cekilisBilgi({_g}, "{$FF4D4D}Zaten devam eden bir çekiliş var. {gray}İptal: {$FFD200}/cekilis iptal")
+            stop
+
+        set {-cekilis::%{_id}%::isim} to {_isim}
+        set {-cekilis::%{_id}%::sayac} to {@sure}
+
+        set {_f::accept} to function reference "cekilisTick" called with {_id}
+        set {_tuketici} to new proxy instance of Consumer using {_f::*}
+        set {_eklenti} to Bukkit.getPluginManager().getPlugin("Skript")
+        set {_gorev} to Bukkit.getGlobalRegionScheduler().runAtFixedRate({_eklenti}, {_tuketici}, 1, 20)
+        if {_gorev} is not set:
+            {-cekilis::aktif}.compareAndSet({_id}, 0)
+            delete {-cekilis::%{_id}%::*}
+            cekilisBilgi({_g}, "{$FF4D4D}Zamanlayıcı başlatılamadı. {gray}(Paper/Folia 1.20+ ve skript-reflect gerekli)")
+            stop
+        set {-cekilis::%{_id}%::gorev} to {_gorev}
+
+        set {_c} to cekilisCizgi()
+        cekilisDuyur("%{_c}%{newline} {newline}  {tema}{bold}✦ ÇEKİLİŞ BAŞLADI ✦{/bold}{/tema}{newline} {newline}  {dark_gray}▸ {gray}Çekiliş: {white}%{_isim}%{newline}  {dark_gray}▸ {gray}Katılımcı: {white}%{_n}% oyuncu{newline}  {dark_gray}▸ {gray}Süre: {white}{@sure} saniye{newline} {newline}%{_c}%")
+        cekilisSes("minecraft:block.note_block.bell", 1.2, 0.8)
