@@ -82,6 +82,11 @@ public final class ClaimModule implements ClaimApi {
     /** Oyuncu basina menu / girdi durumu (Skript metadata + {-...::<uuid>}) */
     final ConcurrentHashMap<UUID, Session> sessions = new ConcurrentHashMap<>();
 
+    final ClaimMenus menus = new ClaimMenus(this);
+    final ClaimActions actions = new ClaimActions(this);
+    final ClaimChat chat = new ClaimChat(this);
+    final Upgrades upgrades = new Upgrades(this);
+
     private ZoneId nightZone;
     private final List<ScheduledTask> tasks = new ArrayList<>();
     volatile boolean enabled;

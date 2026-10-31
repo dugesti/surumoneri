@@ -33,6 +33,14 @@ final class Session {
     volatile String chatMode;
     volatile String chatCid;
     volatile double chatAt = Double.NaN;
+    volatile double chatPrice;
+    volatile String chunkDeleteSrc;
+    volatile boolean timerDone;
+    // isinlanma varisi ({-tp_land}, {-tp_stone}, {-tp_stone_t}, {-tp_fx})
+    volatile boolean tpLand;
+    volatile Location tpStone;
+    volatile double tpStoneT = Double.NaN;
+    volatile boolean tpFx;
 
     // {-map_mark::<uuid>}
     volatile boolean mapMark;
