@@ -285,7 +285,16 @@ public final class ClaimStore {
     // ------------------------------------------------------------------ //
 
     /** claim.sk saveSingleClaim. Folia: her thread kendi gecici dosyasina yazar. */
+    /** Ayni claim dosyasina ayni anda tek yazici (farkli claim'ler paralel yazilir). */
+    private final ConcurrentHashMap<String, Object> saveLocks = new ConcurrentHashMap<>();
+
     void save(String cid) {
+        synchronized (saveLocks.computeIfAbsent(cid, k -> new Object())) {
+            saveLocked(cid);
+        }
+    }
+
+    private void saveLocked(String cid) {
         bumpVer(cid);
         Claim c = claims.get(cid);
         if (c == null || c.owner == null) {

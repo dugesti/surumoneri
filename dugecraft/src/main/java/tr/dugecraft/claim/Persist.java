@@ -106,7 +106,7 @@ public final class Persist {
         SkriptBridge.set("claim_lastalive", v);
     }
 
-    void save() {
+    synchronized void save() {
         if (!dirty) {
             return;
         }
