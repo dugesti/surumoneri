@@ -22,12 +22,19 @@ public final class Econ {
     }
 
     public static synchronized boolean init(Logger log) {
-        eco = null;
+        logRef = log;
+        lastTry = System.currentTimeMillis();
+        if (eco != null) {
+            return true;
+        }
         try {
             Class<?> c = Class.forName("net.milkbowl.vault.economy.Economy");
             RegisteredServiceProvider<?> rsp = Bukkit.getServicesManager().getRegistration(c);
             if (rsp == null) {
-                log.warning("Vault ekonomi saglayicisi bulunamadi.");
+                if (!warned) {
+                    warned = true;
+                    log.warning("Vault ekonomi saglayicisi bulunamadi (Essentials/CMI gibi bir ekonomi eklentisi gerekli). Para islemleri calismaz.");
+                }
                 return false;
             }
             eco = rsp.getProvider();
@@ -36,18 +43,42 @@ public final class Econ {
             deposit = c.getMethod("depositPlayer", OfflinePlayer.class, double.class);
             return true;
         } catch (ReflectiveOperationException | LinkageError e) {
-            log.warning("Vault bulunamadi: " + e);
+            if (!warned) {
+                warned = true;
+                log.warning("Vault bulunamadi, para islemleri calismaz: " + e);
+            }
             eco = null;
             return false;
         }
     }
 
+    private static volatile long lastTry;
+    private static volatile boolean warned;
+    private static volatile Logger logRef;
+
+    /**
+     * Ekonomi saglayicisi (Essentials, CMI...) DugeCraft'tan SONRA acilabilir
+     * veya sonradan kurulabilir: hazir degilse en fazla 5 sn'de bir yeniden aranir.
+     */
+    private static boolean ensure() {
+        if (eco != null) {
+            return true;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastTry < 5000) {
+            return false;
+        }
+        lastTry = now;
+        Logger l = logRef != null ? logRef : Bukkit.getLogger();
+        return init(l);
+    }
+
     public static boolean ready() {
-        return eco != null;
+        return ensure();
     }
 
     public static double balance(OfflinePlayer p) {
-        if (eco == null) {
+        if (!ensure()) {
             return 0;
         }
         try {
@@ -67,7 +98,7 @@ public final class Econ {
     }
 
     private static boolean call(Method m, OfflinePlayer p, double amount) {
-        if (eco == null) {
+        if (!ensure()) {
             return false;
         }
         try {
