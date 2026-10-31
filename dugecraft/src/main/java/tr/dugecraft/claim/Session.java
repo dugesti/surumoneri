@@ -41,6 +41,11 @@ final class Session {
     volatile Location tpStone;
     volatile double tpStoneT = Double.NaN;
     volatile boolean tpFx;
+    // {-stone_pending::<uuid>::*}: sohbetten kurulan claim'in tasi (oyuncunun bolgesinde konur)
+    volatile String stonePendingCid;
+    volatile Location stonePendingLoc;
+    // {-stone_scan::<uuid>}
+    volatile double stoneScan = Double.NaN;
 
     // {-map_mark::<uuid>}
     volatile boolean mapMark;
