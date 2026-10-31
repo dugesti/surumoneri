@@ -18,15 +18,34 @@ public final class Text {
     private static final LegacyComponentSerializer AMP = LegacyComponentSerializer.builder()
             .character('&')
             .hexColors()
-            .useUnusualXRepeatedCharacterHexFormat()
             .build();
 
     private Text() {
     }
 
-    /** "&6DugeCraft &8» &a..." gibi & kodlu metni bilesene cevirir. */
+    private static final java.util.regex.Pattern SK_HEX = java.util.regex.Pattern.compile("<#([0-9a-fA-F]{6})>");
+
+    /**
+     * Skript metnini bilesene cevirir: "&a" / "§a" kodlari ve Skript'in
+     * "<#5ac8fa>" hex renk etiketi (eski script'lerin hepsi bunlari kullanir).
+     */
     public static Component color(String legacy) {
-        return AMP.deserialize(legacy);
+        String s = legacy.replace('§', '&');
+        if (s.indexOf("<#") >= 0) {
+            s = SK_HEX.matcher(s).replaceAll("&#$1");
+        }
+        return AMP.deserialize(s);
+    }
+
+    /** Renk kodlarini atar (Skript "uncolored"). */
+    public static String plain(Component c) {
+        return net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(c);
+    }
+
+    public static void actionBar(org.bukkit.entity.Player p, String legacy) {
+        if (p != null) {
+            p.sendActionBar(color(legacy));
+        }
     }
 
     public static void send(CommandSender to, String legacy) {
