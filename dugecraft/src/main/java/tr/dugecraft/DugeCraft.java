@@ -30,6 +30,9 @@ public final class DugeCraft extends JavaPlugin {
     private BlokModule blok;
     private ClaimModule claim;
     private TowerModule tower;
+    /** /dugecraft durum icin: modul neden calismiyor */
+    private String blokStatus = "baslatilmadi";
+    private String claimStatus = "baslatilmadi";
 
     @Override
     public void onEnable() {
@@ -45,6 +48,7 @@ public final class DugeCraft extends JavaPlugin {
         if (!claimClash.isEmpty() || !sokClash.isEmpty()) {
             List<Path> all = new ArrayList<>(claimClash);
             all.addAll(sokClash);
+            claimStatus = "KAPALI - eski script hala yuklu: " + all;
             Text.console("<#f6d365>DugeCraft &8› &cCLAIM ve SOK KULESI MODULLERI BASLATILMADI! &feski script(ler) hala yuklu: &e" + all
                     + " &7claim.sk ve sok.sk'yi silin ya da adlarinin basina '-' koyun, sunucuyu yeniden baslatin.");
         } else {
@@ -55,8 +59,10 @@ public final class DugeCraft extends JavaPlugin {
                 claim.enable();
                 tower.enable();
                 claims = new ModuleFarmClaims(claim);
+                claimStatus = "ACIK";
             } catch (RuntimeException | LinkageError ex) {
                 getLogger().severe("Claim / sok kulesi modulu baslatilamadi: " + ex);
+                claimStatus = "KAPALI - hata: " + ex;
                 ex.printStackTrace();
                 if (tower != null) {
                     tower.disable();
@@ -76,11 +82,20 @@ public final class DugeCraft extends JavaPlugin {
         List<Path> clash = findScripts("chunklimits_v3");
         if (!clash.isEmpty()) {
             // Ayni veri dosyasina iki sistem yazarsa veri bozulur: modul hic baslamaz.
+            blokStatus = "KAPALI - bloksinir.sk hala yuklu: " + clash;
             Text.console(cfg.prefix + " &cBLOK LIMIT MODULU BASLATILMADI! &fbloksinir.sk hala yuklu: &e" + clash
                     + " &7Script'i silin ya da adinin basina '-' koyun ve sunucuyu yeniden baslatin.");
         } else {
-            blok = new BlokModule(this, cfg, claims);
-            blok.enable();
+            try {
+                blok = new BlokModule(this, cfg, claims);
+                blok.enable();
+                blokStatus = "ACIK";
+            } catch (RuntimeException | LinkageError ex) {
+                getLogger().severe("Blok limit modulu baslatilamadi: " + ex);
+                ex.printStackTrace();
+                blok = null;
+                blokStatus = "KAPALI - hata: " + ex;
+            }
         }
 
         if (blok != null) {
@@ -91,6 +106,25 @@ public final class DugeCraft extends JavaPlugin {
             DynCommands.register("chunklimittemizle", "Tarama önbelleğini sıfırlar (WorldEdit vb. sonrası)", bcmd);
             DynCommands.register("chunklimitkaydet", "Limit verilerini diske hemen yazar", bcmd);
         }
+        printStatus(getServer().getConsoleSender());
+    }
+
+    private void printStatus(org.bukkit.command.CommandSender to) {
+        Text.send(to, "&6DugeCraft &7v" + getPluginMeta().getVersion() + " &8› &fmodul durumu");
+        Text.send(to, " &7Claim + Sok kulesi: " + (claimStatus.equals("ACIK") ? "&a" : "&c") + claimStatus);
+        Text.send(to, " &7Blok limit: " + (blokStatus.equals("ACIK") ? "&a" : "&c") + blokStatus);
+        Text.send(to, " &7Skript koprusu: " + (SkriptBridge.available() ? "&avar" : "&eyok (bilgi/placeholder degiskenleri yazilmaz)"));
+        Text.send(to, " &7Ekonomi (Vault): " + (tr.dugecraft.util.Econ.ready() ? "&avar" : "&cYOK - para islemleri calismaz"));
+        Text.send(to, " &7Komutlar: &f" + String.join(", ", DynCommands.registeredNames()));
+    }
+
+    @Override
+    public boolean onCommand(@org.jetbrains.annotations.NotNull org.bukkit.command.CommandSender sender,
+                             @org.jetbrains.annotations.NotNull org.bukkit.command.Command command,
+                             @org.jetbrains.annotations.NotNull String label,
+                             @org.jetbrains.annotations.NotNull String[] args) {
+        printStatus(sender);
+        return true;
     }
 
     private ConfigurationSection section(String name) {

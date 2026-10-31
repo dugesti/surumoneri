@@ -56,11 +56,33 @@ public final class DynCommands {
         register(name, description, ex, null);
     }
 
+    /** Uzerine yazilan baska eklenti komutlari (kapanista geri konur) */
+    private static final Map<String, Command> OVERRIDDEN = new java.util.HashMap<>();
+
+    /**
+     * Komutu kaydeder ve etiketi ZORLA alir (Skript de boyle yapiyordu):
+     * ayni adda baska eklentinin komutu varsa (ornek Essentials /home)
+     * script'teki gibi bizim komut calisir; digeri "eklenti:komut" ile erisilebilir kalir.
+     */
     public static synchronized void register(String name, String description, CommandExecutor ex, TabCompleter tab) {
         CommandMap map = Bukkit.getCommandMap();
+        Map<String, Command> known = map.getKnownCommands();
+        Command prev = known.get(name);
         Cmd c = new Cmd(name, description, ex, tab);
         map.register("dugecraft", c);
+        if (prev != null && prev != c && !OVERRIDDEN.containsKey(name)) {
+            OVERRIDDEN.put(name, prev);
+        }
+        known.put(name, c);
         REGISTERED.add(c);
+    }
+
+    public static synchronized List<String> registeredNames() {
+        List<String> out = new ArrayList<>();
+        for (Command c : REGISTERED) {
+            out.add(c.getName());
+        }
+        return out;
     }
 
     /** Kapanista kayitlari kaldirir (PlugMan ile yeniden yuklemede cakisma olmasin). */
@@ -72,5 +94,9 @@ public final class DynCommands {
             known.values().removeIf(v -> v == c);
         }
         REGISTERED.clear();
+        for (Map.Entry<String, Command> e : OVERRIDDEN.entrySet()) {
+            known.putIfAbsent(e.getKey(), e.getValue());
+        }
+        OVERRIDDEN.clear();
     }
 }

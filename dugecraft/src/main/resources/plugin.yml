@@ -10,3 +10,11 @@ permissions:
   dugecraft.lagwarn:
     description: Lag uyarilarini gorur, /bloklag kullanir
     default: op
+  dugecraft.admin:
+    description: /dugecraft durum komutu
+    default: op
+
+commands:
+  dugecraft:
+    description: DugeCraft modul durumunu gosterir (hangi sistem acik, neden kapali)
+    permission: dugecraft.admin
