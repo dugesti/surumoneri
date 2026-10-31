@@ -1,6 +1,5 @@
 package tr.dugecraft;
 
-import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.MemoryConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -9,6 +8,7 @@ import tr.dugecraft.blok.BlokConfig;
 import tr.dugecraft.blok.BlokModule;
 import tr.dugecraft.farm.FarmClaims;
 import tr.dugecraft.farm.SkriptFarmClaims;
+import tr.dugecraft.util.DynCommands;
 import tr.dugecraft.util.SkriptBridge;
 import tr.dugecraft.util.Text;
 
@@ -45,25 +45,19 @@ public final class DugeCraft extends JavaPlugin {
             blok.enable();
         }
 
-        BlokCommands bcmd = blok != null ? new BlokCommands(blok) : null;
-        for (String c : List.of("bloklag", "chunkhesapla", "chunklimit", "chunklimittemizle", "chunklimitkaydet")) {
-            PluginCommand pc = getCommand(c);
-            if (pc == null) {
-                continue;
-            }
-            if (bcmd != null) {
-                pc.setExecutor(bcmd);
-            } else {
-                pc.setExecutor((s, cmd, l, a) -> {
-                    Text.send(s, cfg.prefix + " &cBlok limit modülü kapalı (bloksinir.sk yüklü). Konsolu kontrol et.");
-                    return true;
-                });
-            }
+        if (blok != null) {
+            BlokCommands bcmd = new BlokCommands(blok);
+            DynCommands.register("bloklag", "bloksinir skriptinin son 1 dakikalık yükünü ve sunucu durumunu gösterir", bcmd);
+            DynCommands.register("chunkhesapla", "Bulunduğun chunk'ı baştan sona yeniden sayar", bcmd);
+            DynCommands.register("chunklimit", "Kayıtlı sayaçları gösterir (tarama yapmaz)", bcmd);
+            DynCommands.register("chunklimittemizle", "Tarama önbelleğini sıfırlar (WorldEdit vb. sonrası)", bcmd);
+            DynCommands.register("chunklimitkaydet", "Limit verilerini diske hemen yazar", bcmd);
         }
     }
 
     @Override
     public void onDisable() {
+        DynCommands.unregisterAll();
         if (blok != null) {
             blok.disable();
             blok = null;
