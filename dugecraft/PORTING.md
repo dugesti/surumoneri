@@ -5,7 +5,7 @@ Kaynak script'ler (sunucudaki son halleri):
 | Script | Satir | Modul | Durum |
 |---|---|---|---|
 | bloksinir.sk v4.0 | 1534 | `tr.dugecraft.blok` | Tasindi, CI'da derleniyor, sunucuda test bekliyor |
-| sok.sk v11.62 | 5686 | `tr.dugecraft.tower` | Yaziliyor |
+| sok.sk v11.62 | 5686 | `tr.dugecraft.tower` | Tasindi, CI'da derleniyor; claim modulu bitince devreye girecek (ClaimApi) |
 | claim.sk v15.16 | 8374 | `tr.dugecraft.claim` | Bekliyor |
 | buyulutas.sk v2.12 | 3251 | (Skript'te kalir) | Sadece `emiciReduction` koprusu |
 
@@ -41,3 +41,29 @@ Vault + EssentialsC (ekonomi), EconomyShopGUI (ciftci fiyatlari), PvPManager
 komutu `sokmagaza <oyuncu>` ile acar), LuckPerms (group.vip/dvip/dvip+ izinleri),
 PlaceholderAPI + TAB (claim placeholder'lari {-claim_plc::*} uzerinden),
 Farmer (ayri eklenti; ItemSpawnEvent dinliyor olabilir).
+
+## Kule modulu notlari (tamamlandi)
+
+- `TowerStore`: veri + indeksler (byCid, byFcid, byChunk 3x3, byRange menzil), flush async ve kilitli.
+- `TowerModule`: motor (shockCheck/doShock), akim, isin, savas etiketi, kazma, bakim, bilgi API.
+- `TowerUi`: menu, magaza, esya onarimi. `TowerListener`: tum olaylar. `TowerCommands`.
+- `EmiciBridge`: once Skript `emiciReduction` (ch.njol.skript.lang.function.Functions), yoksa Java formulu.
+- Esya adi/aciklamasi legacy § metin (Skript ile ayni yol). Stacking icin isSimilar.
+- Komutlar DynCommands ile modul basinca kaydedilir (plugin.yml'de komut YOK).
+- claim modulunun kuleye ihtiyaci: `isTowerAt` (towerNearLoc), `combatUntil` (inSokCombat),
+  `markFcidDirty` (claim silinince).
+
+## Claim modulu plani (claim.sk v15.16)
+
+Veri modeli (`{-claims::<cid>::*}` -> `Claim` nesnesi), dosya `plugins/Skript/yaml/claims/<cid>.yml`:
+- KAYIT: dosya once OKUNUR, alanlar ustune yazilir (bilinmeyen anahtarlar korunur).
+  Metin alanlari Skript gibi: unset -> "<none>" (main_cid, created_text, owner_name...).
+  Gecici dosya `<cid>.yml.<threadId>.ctmp`, acilista 10 sn'den eski .ctmp kurtarilir.
+- Silme: dosya `claim-backups/deleted/<yyyy-MM-dd_HH-mm-ss>_<cid>.yml`'ye tasinir.
+- Bozuk dosya (owner yok/"<none>"/""): `claim-backups/corrupt/<stamp>_<dosya>`.
+- Ciftci depo: AtomicLong (fstock "mc|k"), oto satis alacagi kurus (fpay), 3 sn'de odeme.
+- Enerji tembel hesap (energy, energy_time, expiry turetilir), kilit reserveChunk("en|mc").
+- isRaidActive() her zaman true (7/24 baskin).
+- Homes: `plugins/Skript/yaml/homes/<uuid>.yml`.
+- variables.csv kalici degiskenler: protchunk, claim_kick_notice, claim_lastalive,
+  claim_paypending, claimprot_used -> Skript'ten okunup devralinacak.
