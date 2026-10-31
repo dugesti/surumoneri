@@ -55,17 +55,30 @@ public final class Persist {
         for (String l : LISTS) {
             Object v = SkriptBridge.get(l + "::*");
             if (v instanceof Map<?, ?> mp) {
-                for (Map.Entry<?, ?> e : mp.entrySet()) {
-                    if (e.getValue() != null && !(e.getValue() instanceof Map)) {
-                        lists.get(l).put(String.valueOf(e.getKey()), e.getValue());
-                    }
-                }
+                flatten(lists.get(l), "", mp);
             }
         }
         lastAlive = SkriptBridge.get("claim_lastalive");
         dirty = true;
         save();
         return true;
+    }
+
+    /** Skript ic ice liste (ornek {claim_kick_notice::<uuid>::1}) -> "uuid::1" anahtarlari. */
+    private static void flatten(Map<String, Object> out, String prefix, Map<?, ?> mp) {
+        for (Map.Entry<?, ?> e : mp.entrySet()) {
+            Object val = e.getValue();
+            if (val == null) {
+                continue;
+            }
+            String k = e.getKey() == null ? "" : String.valueOf(e.getKey());
+            String full = prefix.isEmpty() ? k : prefix + "::" + k;
+            if (val instanceof Map<?, ?> sub) {
+                flatten(out, full, sub);
+            } else if (!k.isEmpty()) {
+                out.put(full, val);
+            }
+        }
     }
 
     public Object get(String list, String key) {

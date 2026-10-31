@@ -77,6 +77,9 @@ Yazildi (derlenmedi, CI'a gonderilmedi - ClaimModule.enable/timers eksik):
   log (alog/clog/flushAdminLog), limitler, enerji, sinir/mesafe, ESG fiyat, oto satis, farmerTake (item spawn govdesi),
   korumalar (protchunk Persist'te), enerji uyarisi, claim tasi + hologram, deleteClaim, placeholder koprusu.
 
+Yazildi (2. tur): `ClaimMenus` (1879-3100), `ClaimActions` (3102-4309), `Homes` (4311-4616),
+`ClaimChat` (5111-5216 + 6370-6611), `ClaimEvents` (5619-6366 + 8332-8374), `Session` alanlari.
+
 Kalan (okunacak + yazilacak):
 - 1879-2140 menuler (openMyClaimsMenu, cmItem, openClaimMenu, leave confirm) -> ClaimMenus
 - 2163-2490 ciftci menuleri (fill*/open*), 2499-2617 chunk isareti, 2662-2968 harita + enerji menusu
