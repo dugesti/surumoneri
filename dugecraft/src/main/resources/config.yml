@@ -1,0 +1,41 @@
+# DugeCraft - Skript'ten tasinan sistemler
+# Degerler eski script'lerdeki "options:" ile birebir aynidir.
+
+# ============================================================================ #
+#  BLOK LIMIT VE BUYUME KONTROLU (eski bloksinir.sk v4.0)                      #
+#  Veri: plugins/DugeCraft/chunklimits_v3.yml (script ile ayni dosya/format)    #
+# ============================================================================ #
+blok-limit:
+  prefix: "&6DugeCraft &8»"
+
+  # ----------------------------- LİMİTLER ---------------------------------
+  limit_piston: 384          # Piston + yapışkan piston (ortak)
+  limit_cactus: 384          # Kaktüs
+  limit_repeater: 20         # Yineleyici
+  limit_comparator: 20       # Karşılaştırıcı
+  limit_bamboo: 768          # Bambu + bambu fidanı (ortak)
+  limit_kelp: 768            # Su yosunu + yosun gövdesi (ortak)
+
+  # ------------------------- BÜYÜME KONTROLÜ ------------------------------
+  cactus_drop_chance: 100
+  bamboo_drop_chance: 100
+  kelp_drop_chance: 100
+  melon_drop_chance: 100
+  pumpkin_drop_chance: 100
+  press_distance: 2
+  crop_cancel: 0
+
+  # --------------------------- PERFORMANS ---------------------------------
+  scan_cooldown: 30
+  save_minutes: 2
+  data_dir: plugins/DugeCraft
+
+  # --------------------------- LAG UYARI SİSTEMİ --------------------------
+  warn_perm: dugecraft.lagwarn
+  warn_script_ms: 1000
+  warn_spike_ms: 50
+  warn_save_ms: 1000
+  warn_drops: 5000
+  warn_tps: 15
+  warn_cpu: 85
+  warn_repeat_minutes: 5
