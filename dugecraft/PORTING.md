@@ -67,3 +67,22 @@ Veri modeli (`{-claims::<cid>::*}` -> `Claim` nesnesi), dosya `plugins/Skript/ya
 - Homes: `plugins/Skript/yaml/homes/<uuid>.yml`.
 - variables.csv kalici degiskenler: protchunk, claim_kick_notice, claim_lastalive,
   claim_paypending, claimprot_used -> Skript'ten okunup devralinacak.
+
+### Claim modulu ilerleme (claim.sk satir araliklari)
+
+Yazildi (derlenmedi, CI'a gonderilmedi - ClaimModule.enable/timers eksik):
+- `ClaimConfig` (options 148-236), `Claim` + `ClaimStore` (1-606 veri), `Farmer` (f_keys/fiyat/isim, on load 4627-4734),
+  `Persist` (variables.csv kalici degiskenler), `Session` (metadata + oyuncu degiskenleri), `util/Gui`.
+- `ClaimModule` cekirdek (610-1880): sayaclar, yetkiler (canInteract/canBreakTower/canManageTower/canUseFarmer),
+  log (alog/clog/flushAdminLog), limitler, enerji, sinir/mesafe, ESG fiyat, oto satis, farmerTake (item spawn govdesi),
+  korumalar (protchunk Persist'te), enerji uyarisi, claim tasi + hologram, deleteClaim, placeholder koprusu.
+
+Kalan (okunacak + yazilacak):
+- 1879-2140 menuler (openMyClaimsMenu, cmItem, openClaimMenu, leave confirm) -> ClaimMenus
+- 2163-2490 ciftci menuleri (fill*/open*), 2499-2617 chunk isareti, 2662-2968 harita + enerji menusu
+- 2971-3101 placeholder + bolge giris actionbar, 3102-3520 bolge silme/topoloji/satin alma
+- 3521-3707 satis AFK korumasi, 3708-4310 satin alma/silme/uye/devir/davet/yetki/isinlanma/enerji/patlama
+- 4311-4616 homes (/sethome /home /delhome), 4620-5057 on load + zamanlayicilar, 5058-5615 join/sohbet/komutlar
+- 5619-6366 olaylar (item spawn, korumalar, spawner, claimsiz yasak, tas), 6370-6611 sohbet girdileri
+- 6615-7858 envanter tiklama (EN BUYUK), 7859-7985 drag/close, 7986-8040 bilgi API, 8041-8331 yukseltmeler,
+  8332-8374 2x mob drop
