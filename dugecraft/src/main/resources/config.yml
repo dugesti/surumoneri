@@ -39,3 +39,13 @@ blok-limit:
   warn_tps: 15
   warn_cpu: 85
   warn_repeat_minutes: 5
+
+# ============================================================================ #
+#  CLAIM (eski claim.sk v15.16) ve SOK KULESI (eski sok.sk v11.62)             #
+#  Bos birakilirsa script'lerdeki "options:" degerleri aynen kullanilir.       #
+#  Veri: plugins/Skript/yaml/claims, homes, sok_kuleleri (script ile ayni).    #
+#  Iki modul birlikte calisir; claim.sk veya sok.sk hala yukluyse ikisi de     #
+#  BASLAMAZ (veri cakismasin diye) ve konsola uyari yazilir.                    #
+# ============================================================================ #
+claim: {}
+sok-kulesi: {}

@@ -201,7 +201,7 @@ final class Homes implements CommandExecutor {
         String arg = args.length == 0 ? null : String.join(" ", args);
         switch (cmd.getName().toLowerCase(Locale.ROOT)) {
             case "sethome" -> setHome(p, arg);
-            case "home" -> home(p, arg);
+            case "home", "homes" -> home(p, arg);
             case "delhome" -> delHome(p, arg);
             default -> {
                 return false;

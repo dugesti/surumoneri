@@ -86,6 +86,12 @@ public final class ClaimModule implements ClaimApi {
     final ClaimActions actions = new ClaimActions(this);
     final ClaimChat chat = new ClaimChat(this);
     final Upgrades upgrades = new Upgrades(this);
+    final Homes homes = new Homes(this);
+    final ClaimEvents events = new ClaimEvents(this);
+    final ClaimClicks clicks = new ClaimClicks(this);
+    final ClaimCommands commands = new ClaimCommands(this);
+    /** {-csave_pos}: 10 sn'lik kayit turunun kaldigi yer */
+    private int csavePos;
 
     private ZoneId nightZone;
     private final List<ScheduledTask> tasks = new ArrayList<>();
@@ -395,7 +401,7 @@ public final class ClaimModule implements ClaimApi {
     }
 
     /** Kuyruktaki admin loglarini dosyaya yazar (5 sn'de bir, async). */
-    void flushAdminLog() {
+    synchronized void flushAdminLog() {
         if (alogq.isEmpty()) {
             return;
         }
@@ -1486,6 +1492,26 @@ public final class ClaimModule implements ClaimApi {
     //  KAYIT / SILME
     // ------------------------------------------------------------------ //
 
+    /** {claim_kick_notice::<uuid>::*}: cevrimdisi oyuncuya giriste gosterilecek mesaj (en fazla 10). */
+    void addKickNotice(String u, String msg) {
+        String pre = u + "::";
+        int count = 0;
+        int max = 0;
+        for (String k : persist.lists.get("claim_kick_notice").keySet()) {
+            if (k.startsWith(pre)) {
+                count++;
+                try {
+                    max = Math.max(max, Integer.parseInt(k.substring(pre.length())));
+                } catch (NumberFormatException ignored) {
+                    // elle yazilmis anahtar
+                }
+            }
+        }
+        if (count < 10) {
+            persist.set("claim_kick_notice", pre + (max + 1), msg);
+        }
+    }
+
     void save(String cid) {
         store.save(cid);
     }
@@ -1548,5 +1574,367 @@ public final class ClaimModule implements ClaimApi {
 
     static String colored(String s) {
         return Gui.legacy(s);
+    }
+
+    // ------------------------------------------------------------------ //
+    //  ACILIS / KAPANIS / ZAMANLAYICILAR (claim.sk on load / every / on unload)
+    // ------------------------------------------------------------------ //
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void enable() {
+        if (enabled) {
+            return;
+        }
+        Econ.init(plugin.getLogger());
+        boolean imported = persist.load();
+        if (imported) {
+            Text.console(cfg.prefix + " &eKalici claim degiskenleri Skript'ten devralindi &7(plugins/DugeCraft/claim_kalici.yml)");
+        }
+        // Kapanista yedeklenen (odenmemis) oto satis paralari geri yuklenir (kurus)
+        for (Map.Entry<String, Object> e : new HashMap<>(persist.lists.get("claim_paypending")).entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof Number n && n.doubleValue() > 0) {
+                payAdd(e.getKey(), n.doubleValue() / 100);
+            }
+            persist.set("claim_paypending", e.getKey(), null);
+        }
+        persist.save();
+
+        store.loadAll();
+        homes.loadAll();
+        Text.console(cfg.prefix + " <#a8ff78>Claim verileri, Evler ve Çiftçi başarıyla yüklendi.");
+
+        SkriptBridge.set("-claim_plc::raid", "&cAçık");
+        SkriptBridge.set("-claim_plc::raid_left", "7/24");
+
+        // SUNUCU KAPALI KALDIGI SURE ENERJIDEN DUSMEZ
+        double nowUp = now();
+        Object la = persist.lastAlive;
+        if (la instanceof Number lan) {
+            double last = lan.doubleValue();
+            double gap = nowUp - last;
+            if (gap > 300) {
+                for (String cid : store.all) {
+                    Claim c = store.get(cid);
+                    if (c == null || !c.main()) {
+                        continue;
+                    }
+                    if (c.energyTime != null) {
+                        c.energyTime = c.energyTime + gap;
+                    }
+                    if (c.expiry != null) {
+                        c.expiry = c.expiry + gap;
+                    }
+                    Double pOld = c.protectUntil;
+                    if (pOld != null && pOld > last) {
+                        c.protectUntil = Math.floor(pOld + gap);
+                        for (String sub : store.all) {
+                            Claim sc = store.get(sub);
+                            if (sc != null && cid.equals(sc.mainCid)) {
+                                Double pc = persist.num("protchunk", sub);
+                                if (pc != null && pc.doubleValue() == pOld) {
+                                    persist.set("protchunk", sub, c.protectUntil);
+                                }
+                            }
+                        }
+                    }
+                    c.needsSave = true;
+                }
+                alog("SISTEM", "sunucu " + (long) Math.floor(gap / 60) + " dk kapali kaldi, enerji ve koruma sureleri ileri kaydirildi");
+            }
+        }
+        persist.setLastAlive(nowUp);
+
+        refreshLowEnergyIndex();
+        for (String cid : store.all) {
+            if (persist.get("protchunk", cid) == null) {
+                markProtChunk(cid, mainOf(cid));
+            }
+        }
+        cleanDeletedBackups();
+        alog("SISTEM", "claim modulu yuklendi (DugeCraft)");
+        publishInfo();
+
+        plugin.getServer().getPluginManager().registerEvents(events, plugin);
+        plugin.getServer().getPluginManager().registerEvents(clicks, plugin);
+        plugin.getServer().getPluginManager().registerEvents(commands, plugin);
+        commands.register();
+
+        var g = Bukkit.getGlobalRegionScheduler();
+        var as = Bukkit.getAsyncScheduler();
+        // EconomyShopGUI esyalari gec yuklenir: fiyatlar 10 sn sonra cekilir
+        tasks.add(g.runDelayed(plugin, t -> refreshFarmerPrices(true), 200L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("1dk", this::minuteTick), 1200L, 1200L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("1sn", this::secondTick), 20L, 20L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("davet", actions::expireInvites), 100L, 100L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("odeme", this::payFlush), 60L, 60L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("5dk", this::fiveMinuteTick), 6000L, 6000L));
+        tasks.add(g.runAtFixedRate(plugin, t -> safe("15dk", this::expiryTick), 18000L, 18000L));
+        tasks.add(as.runAtFixedRate(plugin, t -> safe("alog", this::flushAdminLog), 5, 5, java.util.concurrent.TimeUnit.SECONDS));
+        tasks.add(as.runAtFixedRate(plugin, t -> safe("kayit", this::saveTick), 10, 10, java.util.concurrent.TimeUnit.SECONDS));
+        tasks.add(as.runAtFixedRate(plugin, t -> safe("kalici", persist::save), 30, 30, java.util.concurrent.TimeUnit.SECONDS));
+        enabled = true;
+    }
+
+    public void disable() {
+        if (!enabled) {
+            return;
+        }
+        enabled = false;
+        for (ScheduledTask t : tasks) {
+            t.cancel();
+        }
+        tasks.clear();
+        org.bukkit.event.HandlerList.unregisterAll(events);
+        org.bukkit.event.HandlerList.unregisterAll(clicks);
+        org.bukkit.event.HandlerList.unregisterAll(commands);
+        persist.setLastAlive(now());
+        // Bekleyen oto satis paralari ODENMEZ, kalici degiskene yedeklenir (kurus):
+        // kapanirken ekonomi eklentisi once kapanmis olabilir.
+        for (Map.Entry<String, AtomicLong> e : fpay.entrySet()) {
+            long c = e.getValue().getAndSet(0);
+            if (c > 0) {
+                Object old = persist.get("claim_paypending", e.getKey());
+                double prev = old instanceof Number n ? n.doubleValue() : 0;
+                persist.set("claim_paypending", e.getKey(), prev + c);
+            }
+        }
+        for (String cid : store.all) {
+            Claim c = store.get(cid);
+            if (c != null && c.needsSave) {
+                c.needsSave = false;
+                store.save(cid);
+            }
+        }
+        alog("SISTEM", "claim modulu durduruldu (DugeCraft)");
+        flushAdminLog();
+        persist.save();
+        Text.console(cfg.prefix + " <#a8ff78>Claim modülü durduruldu.");
+    }
+
+    private void safe(String name, Runnable r) {
+        try {
+            r.run();
+        } catch (RuntimeException ex) {
+            plugin.getLogger().warning("[claim] zamanlayici hatasi (" + name + "): " + ex);
+        }
+    }
+
+    private void cleanDeletedBackups() {
+        File dir = new File(ClaimStore.BACKUP_DELETED);
+        if (!dir.exists()) {
+            return;
+        }
+        double limit = now() - cfg.deletedBackupDays * 86400;
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File f : files) {
+            if (f.lastModified() / 1000.0 < limit) {
+                if (!f.delete()) {
+                    plugin.getLogger().warning("[claim] eski yedek silinemedi: " + f.getName());
+                }
+            }
+        }
+    }
+
+    /** every 1 minute */
+    private void minuteTick() {
+        refreshFarmerPrices(false);
+        prodTick();
+        persist.setLastAlive(now());
+        double gNow = now();
+        events.farmerGuard.entrySet().removeIf(en -> {
+            if (gNow - en.getValue() > 10) {
+                events.farmerGuardLoc.remove(en.getKey());
+                return true;
+            }
+            return false;
+        });
+        actions.sellAfkCleanup();
+    }
+
+    /** every 1 second: ciftci menusu canli guncelleme, chunk isareti, actionbar. Her oyuncu kendi thread'inde. */
+    private void secondTick() {
+        for (Map.Entry<UUID, Session> e : sessions.entrySet()) {
+            Session s = e.getValue();
+            boolean fv = s.fview != null;
+            boolean mk = !Double.isNaN(s.cmarkUntil);
+            boolean ab = !Double.isNaN(s.abarUntil);
+            if (!fv && !mk && !ab) {
+                continue;
+            }
+            Player p = Bukkit.getPlayer(e.getKey());
+            if (p == null) {
+                menus.viewClear(s);
+                menus.clearMark(s);
+                s.abarUntil = Double.NaN;
+                s.abar = null;
+                continue;
+            }
+            p.getScheduler().run(plugin, t -> {
+                try {
+                    playerTick(p, s);
+                } catch (RuntimeException ex) {
+                    plugin.getLogger().warning("[claim] oyuncu tik hatasi: " + ex);
+                }
+            }, null);
+        }
+    }
+
+    private void playerTick(Player p, Session s) {
+        double n = now();
+        String mc = s.fview;
+        if (mc != null) {
+            String mode = s.fviewMode;
+            long tok = s.fviewTok;
+            org.bukkit.inventory.Inventory top = p.getOpenInventory().getTopInventory();
+            String want = "main".equals(mode) ? "farmer_menu" : "as_menu".equals(mode) ? "farmer_as_menu" : "farmer_item_menu";
+            org.bukkit.inventory.Inventory inv = s.inv;
+            boolean keep = inv != null && top == inv && want.equals(s.menu);
+            Claim c = store.get(mc);
+            if (c == null || !c.farmerOn()) {
+                keep = false;
+            }
+            if (!keep) {
+                if (s.fviewTok == tok) {
+                    menus.viewClear(s);
+                }
+            } else {
+                String ver = menus.viewVer(mc);
+                if (!ver.equals(s.fviewVer)) {
+                    s.fviewVer = ver;
+                    if ("main".equals(mode)) {
+                        menus.fillFarmer(p, inv, mc);
+                    } else if ("as_menu".equals(mode)) {
+                        menus.fillFarmerAs(p, inv, mc);
+                    } else {
+                        menus.fillFarmerItem(p, inv, mc, mode);
+                    }
+                }
+            }
+        }
+        if (!Double.isNaN(s.cmarkUntil)) {
+            if (n > s.cmarkUntil) {
+                menus.clearMark(s);
+            } else {
+                menus.drawMark(p, s);
+            }
+        }
+        if (!Double.isNaN(s.abarUntil)) {
+            if (n > s.abarUntil) {
+                s.abarUntil = Double.NaN;
+                s.abar = null;
+            } else if (s.abar != null) {
+                p.sendActionBar(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(s.abar));
+            }
+        }
+    }
+
+    /** every 10 seconds: degisen claimler sirayla, tur basina en fazla save_batch dosya. */
+    private void saveTick() {
+        List<String> all = new ArrayList<>(store.all);
+        int n = all.size();
+        if (n <= 0) {
+            return;
+        }
+        int pos = csavePos;
+        if (pos >= n || pos < 0) {
+            pos = 0;
+        }
+        int saved = 0;
+        int i = 0;
+        int done = n;
+        while (i < n) {
+            if (saved >= cfg.saveBatch) {
+                done = i;
+                break;
+            }
+            String scid = all.get((pos + i) % n);
+            i++;
+            done = i;
+            Claim c = store.get(scid);
+            if (c != null && c.needsSave) {
+                c.needsSave = false;
+                store.save(scid);
+                saved++;
+            }
+        }
+        csavePos = (pos + done) % n;
+    }
+
+    /** every 5 minutes */
+    private void fiveMinuteTick() {
+        refreshLowEnergyIndex();
+        for (Map.Entry<String, Double> e : alogPay.entrySet()) {
+            double pa = e.getValue();
+            if (pa > 0) {
+                alogPay.merge(e.getKey(), -pa, Double::sum);
+                alog("OTOSATIS", "ODEME sahip=" + e.getKey() + " son_5dk_toplam=" + Text.num(pa));
+            }
+        }
+        alogPay.entrySet().removeIf(en -> en.getValue() <= 0.0000001);
+        for (String cid : store.all) {
+            Claim c = store.get(cid);
+            if (c != null && c.main() && c.farmerOn()) {
+                validateAutoSell(cid);
+            }
+        }
+    }
+
+    /** every 15 minutes: enerjisi biten claim patlar. */
+    private void expiryTick() {
+        List<String> expired = new ArrayList<>();
+        for (String cid : new ArrayList<>(store.all)) {
+            Claim c = store.get(cid);
+            if (c != null && c.main()) {
+                if (syncEnergy(cid) <= 0) {
+                    expired.add(cid);
+                }
+            }
+        }
+        for (String cid : expired) {
+            Claim c = store.get(cid);
+            String cName = c == null || c.claimName == null ? "Bilinmiyor" : c.claimName;
+            alog("CLAIM", "ENERJI_BITTI claim=" + cid + " isim=" + cName + " sahip=" + (c == null ? "<none>" : c.owner));
+            actions.broadcastExplosion("sure_bitti", cName, cid);
+            deleteClaim(cid);
+        }
+    }
+
+    /** claimPublishInfo: bilgi.sk icin {-bilgi::api::claim_*} */
+    void publishInfo() {
+        if (!SkriptBridge.available()) {
+            return;
+        }
+        SkriptBridge.set("-bilgi::api::claim_kurma_ucret", Text.num(cfg.initialClaimPrice));
+        SkriptBridge.set("-bilgi::api::claim_max", Text.num(cfg.maxMainClaims));
+        SkriptBridge.set("-bilgi::api::claim_max_vip", Text.num(cfg.maxMainClaimsVip));
+        SkriptBridge.set("-bilgi::api::claim_max_dvip", Text.num(cfg.maxMainClaimsDvip));
+        SkriptBridge.set("-bilgi::api::claim_max_dvipplus", Text.num(cfg.maxMainClaimsDvipPlus));
+        SkriptBridge.set("-bilgi::api::claim_genis_ucret", Text.num(cfg.expansionBasePrice));
+        SkriptBridge.set("-bilgi::api::claim_genis_artis", Text.num(Math.round((cfg.priceIncreaseRate - 1) * 100)));
+        SkriptBridge.set("-bilgi::api::claim_enerji_saat", Text.num(cfg.energyPerChunkHour));
+        SkriptBridge.set("-bilgi::api::claim_gunluk_ucret", Text.num(cfg.energyPerChunkHour * 24 * cfg.energyPrice));
+        SkriptBridge.set("-bilgi::api::claim_baslangic_enerji", Text.num(cfg.energyStart));
+        SkriptBridge.set("-bilgi::api::claim_baslangic_gun", Text.num(Math.floor(cfg.energyStart / (cfg.energyPerChunkHour * 24))));
+        SkriptBridge.set("-bilgi::api::claim_enerji_max_gun", Text.num(cfg.energyMaxDays));
+        SkriptBridge.set("-bilgi::api::claim_uyari_gun", Text.num(cfg.energyWarnDays));
+        SkriptBridge.set("-bilgi::api::claim_koruma_saat", Text.num(cfg.newClaimProtectHours));
+        SkriptBridge.set("-bilgi::api::claim_koruma_bekleme", Text.num(cfg.newClaimProtectCooldownDays));
+        SkriptBridge.set("-bilgi::api::claim_uye_normal", Text.num(cfg.memberLimitDefault));
+        SkriptBridge.set("-bilgi::api::claim_uye_vip", Text.num(cfg.memberLimitVip));
+        SkriptBridge.set("-bilgi::api::claim_uye_dvip", Text.num(cfg.memberLimitDvip));
+        SkriptBridge.set("-bilgi::api::claim_uye_dvipplus", Text.num(cfg.memberLimitDvipPlus));
+        SkriptBridge.set("-bilgi::api::claim_yukseltme_ucret", fmtShort(cfg.upgradePrice));
+        SkriptBridge.set("-bilgi::api::claim_yukseltme_carpan", Text.num(cfg.upgradeEnergyMult));
+        SkriptBridge.set("-bilgi::api::claim_gece_saat", nightHours());
+        SkriptBridge.set("-bilgi::cache::*", null);
+        SkriptBridge.set("-bilgi::icon::*", null);
+        SkriptBridge.set("-bilgi::resolver", null);
     }
 }

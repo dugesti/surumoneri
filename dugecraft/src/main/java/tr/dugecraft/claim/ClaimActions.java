@@ -1107,8 +1107,11 @@ final class ClaimActions {
             Bukkit.broadcast(Text.color(l));
         }
         for (Player pl : Bukkit.getOnlinePlayers()) {
-            pl.playSound(pl.getLocation(), "entity.generic.explode", 1f, 0.8f);
-            pl.playSound(pl.getLocation(), "entity.ender_dragon.growl", 0.5f, 1.5f);
+            // Folia: ses oyuncunun kendi bolge thread'inde calinir
+            pl.getScheduler().run(m.plugin, t -> {
+                pl.playSound(pl.getLocation(), "entity.generic.explode", 1f, 0.8f);
+                pl.playSound(pl.getLocation(), "entity.ender_dragon.growl", 0.5f, 1.5f);
+            }, null);
         }
     }
 

@@ -73,6 +73,18 @@ final class Session {
     volatile double abarUntil = Double.NaN;
     volatile String plcChunk;
 
+    // yukseltme onayi (upg_key / upg_act)
+    volatile String upgKey;
+    volatile String upgAct;
+    // {fas_dirty}: oto satis menusunde degisiklik yapilan ana claim
+    volatile String fasDirty;
+    // cift tiklama korumalari ({-energy_click}, {-chunkdel_click}, {-chunkbuy_click})
+    volatile double energyClick = Double.NaN;
+    volatile double chunkDelClick = Double.NaN;
+    volatile double chunkBuyClick = Double.NaN;
+    // uye davet girdisi zaman damgasi (60 sn iptal mesaji icin)
+    volatile long memberInputTok;
+
     volatile BlockData unused;
 
     void clearMenu() {

@@ -6,8 +6,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 import tr.dugecraft.blok.BlokCommands;
 import tr.dugecraft.blok.BlokConfig;
 import tr.dugecraft.blok.BlokModule;
+import tr.dugecraft.claim.ClaimConfig;
+import tr.dugecraft.claim.ClaimModule;
+import tr.dugecraft.claim.ModuleFarmClaims;
 import tr.dugecraft.farm.FarmClaims;
 import tr.dugecraft.farm.SkriptFarmClaims;
+import tr.dugecraft.tower.TowerConfig;
+import tr.dugecraft.tower.TowerModule;
 import tr.dugecraft.util.DynCommands;
 import tr.dugecraft.util.SkriptBridge;
 import tr.dugecraft.util.Text;
@@ -23,14 +28,47 @@ import java.util.stream.Stream;
 public final class DugeCraft extends JavaPlugin {
 
     private BlokModule blok;
+    private ClaimModule claim;
+    private TowerModule tower;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         SkriptBridge.init(getLogger());
 
-        // Gecis donemi: claim.sk hala Skript'te. Claim modulu tasininca degisecek.
+        // CLAIM + SOK KULESI: birbirine bagli, ikisi BIRLIKTE baslar. Eski
+        // script'lerden biri bile acik kalmissa (ayni dosyalara iki sistem
+        // yazmasin diye) ikisi de baslamaz, sunucu eskisi gibi Skript'le calisir.
         FarmClaims claims = new SkriptFarmClaims();
+        List<Path> claimClash = findScripts("function saveSingleClaim(");
+        List<Path> sokClash = findScripts("sok_kuleleri");
+        if (!claimClash.isEmpty() || !sokClash.isEmpty()) {
+            List<Path> all = new ArrayList<>(claimClash);
+            all.addAll(sokClash);
+            Text.console("<#f6d365>DugeCraft &8› &cCLAIM ve SOK KULESI MODULLERI BASLATILMADI! &feski script(ler) hala yuklu: &e" + all
+                    + " &7claim.sk ve sok.sk'yi silin ya da adlarinin basina '-' koyun, sunucuyu yeniden baslatin.");
+        } else {
+            try {
+                claim = new ClaimModule(this, new ClaimConfig(section("claim")));
+                tower = new TowerModule(this, new TowerConfig(section("sok-kulesi")), claim);
+                claim.attachTowers(tower);
+                claim.enable();
+                tower.enable();
+                claims = new ModuleFarmClaims(claim);
+            } catch (RuntimeException | LinkageError ex) {
+                getLogger().severe("Claim / sok kulesi modulu baslatilamadi: " + ex);
+                ex.printStackTrace();
+                if (tower != null) {
+                    tower.disable();
+                }
+                if (claim != null) {
+                    claim.disable();
+                }
+                tower = null;
+                claim = null;
+                claims = new SkriptFarmClaims();
+            }
+        }
 
         ConfigurationSection bc = getConfig().getConfigurationSection("blok-limit");
         BlokConfig cfg = new BlokConfig(bc != null ? bc : new MemoryConfiguration());
@@ -55,8 +93,22 @@ public final class DugeCraft extends JavaPlugin {
         }
     }
 
+    private ConfigurationSection section(String name) {
+        ConfigurationSection c = getConfig().getConfigurationSection(name);
+        return c != null ? c : new MemoryConfiguration();
+    }
+
     @Override
     public void onDisable() {
+        // Sira: once kuleler (claim'e soruyor), sonra claim (kayitlar), en son blok
+        if (tower != null) {
+            tower.disable();
+            tower = null;
+        }
+        if (claim != null) {
+            claim.disable();
+            claim = null;
+        }
         DynCommands.unregisterAll();
         if (blok != null) {
             blok.disable();

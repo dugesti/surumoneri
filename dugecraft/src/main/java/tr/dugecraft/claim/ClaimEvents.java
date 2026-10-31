@@ -137,21 +137,27 @@ final class ClaimEvents implements Listener {
         }
         Location el = e.getLocation();
         String cid = ClaimModule.chunkId(el);
-        Double guard = farmerGuard.get(cid);
-        if (guard != null) {
-            if (ClaimModule.now() - guard < 4) {
-                Location gl = farmerGuardLoc.get(cid);
-                if (gl != null && gl.getWorld().equals(el.getWorld()) && el.distance(gl) <= 3) {
-                    return;
-                }
-            } else {
-                farmerGuard.remove(cid);
-                farmerGuardLoc.remove(cid);
-            }
+        if (guarded(cid, el)) {
+            return;
         }
         if (m.farmerTake(cid, matchKey, is.getAmount())) {
             e.setCancelled(true);
         }
+    }
+
+    /** Oyuncu olumu korumasi: olum noktasinin 3 blok cevresi 4 sn ciftciye kapali. */
+    boolean guarded(String cid, Location el) {
+        Double guard = farmerGuard.get(cid);
+        if (guard == null) {
+            return false;
+        }
+        if (ClaimModule.now() - guard < 4) {
+            Location gl = farmerGuardLoc.get(cid);
+            return gl != null && gl.getWorld().equals(el.getWorld()) && el.distance(gl) <= 3;
+        }
+        farmerGuard.remove(cid);
+        farmerGuardLoc.remove(cid);
+        return false;
     }
 
     /** 2x FARM: mob droplari (HIGH). */
@@ -872,6 +878,12 @@ final class ClaimEvents implements Listener {
         Player p = e.getPlayer();
         String u = ClaimModule.uuid(p);
         Session s = m.sessions.remove(p.getUniqueId());
+        // {-cchat::<uuid>} bellek degiskeniydi: cikis-giriste korunur (girisle hatirlatilir)
+        if (s != null && s.cchat != null) {
+            Session keep = new Session();
+            keep.cchat = s.cchat;
+            m.sessions.put(p.getUniqueId(), keep);
+        }
         for (String f : new String[]{"chunk", "name", "owner", "status", "chunks", "energy", "left"}) {
             m.plc(f, u, null);
         }
