@@ -5,8 +5,8 @@ Kaynak script'ler (sunucudaki son halleri):
 | Script | Satir | Modul | Durum |
 |---|---|---|---|
 | bloksinir.sk v4.0 | 1534 | `tr.dugecraft.blok` | Tasindi, CI'da derleniyor, sunucuda test bekliyor |
-| sok.sk v11.62 | 5686 | `tr.dugecraft.tower` | Tasindi, CI'da derleniyor; claim modulu bitince devreye girecek (ClaimApi) |
-| claim.sk v15.16 | 8374 | `tr.dugecraft.claim` | Bekliyor |
+| sok.sk v11.62 | 5686 | `tr.dugecraft.tower` | Tasindi; claim modulu ile birlikte baslar (ClaimApi) |
+| claim.sk v15.16 | 8374 | `tr.dugecraft.claim` | Tasindi, sunucuda test bekliyor |
 | buyulutas.sk v2.12 | 3251 | (Skript'te kalir) | Sadece `emiciReduction` koprusu |
 
 ## Degismez kurallar
@@ -68,24 +68,15 @@ Veri modeli (`{-claims::<cid>::*}` -> `Claim` nesnesi), dosya `plugins/Skript/ya
 - variables.csv kalici degiskenler: protchunk, claim_kick_notice, claim_lastalive,
   claim_paypending, claimprot_used -> Skript'ten okunup devralinacak.
 
-### Claim modulu ilerleme (claim.sk satir araliklari)
+### Claim modulu dosyalari (tamamlandi)
 
-Yazildi (derlenmedi, CI'a gonderilmedi - ClaimModule.enable/timers eksik):
-- `ClaimConfig` (options 148-236), `Claim` + `ClaimStore` (1-606 veri), `Farmer` (f_keys/fiyat/isim, on load 4627-4734),
-  `Persist` (variables.csv kalici degiskenler), `Session` (metadata + oyuncu degiskenleri), `util/Gui`.
-- `ClaimModule` cekirdek (610-1880): sayaclar, yetkiler (canInteract/canBreakTower/canManageTower/canUseFarmer),
-  log (alog/clog/flushAdminLog), limitler, enerji, sinir/mesafe, ESG fiyat, oto satis, farmerTake (item spawn govdesi),
-  korumalar (protchunk Persist'te), enerji uyarisi, claim tasi + hologram, deleteClaim, placeholder koprusu.
+- `ClaimConfig`, `Claim`, `ClaimStore`, `Farmer`, `Persist` (claim_kalici.yml), `Session`
+- `ClaimModule`: cekirdek + acilis/kapanis + zamanlayicilar (1sn oyuncu tiki entity scheduler'da,
+  1dk/3sn/5sn/5dk/15dk global, 10sn kayit turu ve admin log async)
+- `ClaimMenus`, `ClaimActions`, `ClaimClicks` (tiklama/surukleme/kapanis), `Upgrades`, `ClaimChat`,
+  `ClaimEvents`, `Homes`, `ClaimCommands` (/claim /claimtp /claimadmin /sethome /home /homes /delhome + async TAB)
+- `ModuleFarmClaims`: bloksinir buyume urunu yere dusmeden ciftciye (ayni olum korumasi, ayni depo/oto satis)
 
-Yazildi (2. tur): `ClaimMenus` (1879-3100), `ClaimActions` (3102-4309), `Homes` (4311-4616),
-`ClaimChat` (5111-5216 + 6370-6611), `ClaimEvents` (5619-6366 + 8332-8374), `Session` alanlari.
-
-Kalan (okunacak + yazilacak):
-- 1879-2140 menuler (openMyClaimsMenu, cmItem, openClaimMenu, leave confirm) -> ClaimMenus
-- 2163-2490 ciftci menuleri (fill*/open*), 2499-2617 chunk isareti, 2662-2968 harita + enerji menusu
-- 2971-3101 placeholder + bolge giris actionbar, 3102-3520 bolge silme/topoloji/satin alma
-- 3521-3707 satis AFK korumasi, 3708-4310 satin alma/silme/uye/devir/davet/yetki/isinlanma/enerji/patlama
-- 4311-4616 homes (/sethome /home /delhome), 4620-5057 on load + zamanlayicilar, 5058-5615 join/sohbet/komutlar
-- 5619-6366 olaylar (item spawn, korumalar, spawner, claimsiz yasak, tas), 6370-6611 sohbet girdileri
-- 6615-7858 envanter tiklama (EN BUYUK), 7859-7985 drag/close, 7986-8040 bilgi API, 8041-8331 yukseltmeler,
-  8332-8374 2x mob drop
+Kalici degiskenler (variables.csv'deki {protchunk::*}, {claimprot_used::*}, {claim_kick_notice::*},
+{claim_paypending::*}, {claim_lastalive}) ilk acilista Skript'ten devralinir, sonra
+`plugins/DugeCraft/claim_kalici.yml`'de tutulur ve geri donus icin Skript degiskenlerine de yazilir.
